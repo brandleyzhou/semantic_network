@@ -15,7 +15,7 @@ class SegOptions:
         self.parser.add_argument('--dataset', type=str, default="camvid", help="dataset: cityscapes or camvid")
         self.parser.add_argument('--input_size', type=str, default="360,480", help="input size of model")
         self.parser.add_argument('--num_workers', type=int, default=4, help=" the number of parallel threads")
-        self.parser.add_argument('--classes', type=int, default=11,
+        self.parser.add_argument('--classes', type=int, default=19,
                             help="the number of classes in the dataset. 19 and 11 for cityscapes and camvid, respectively")
         self.parser.add_argument('--train_type', type=str, default="trainval",
                             help="ontrain for training on train set, ontrainval for training on train+val set")
