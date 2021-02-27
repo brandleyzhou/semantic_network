@@ -27,6 +27,11 @@ from utils.losses.loss import LovaszSoftmax, CrossEntropyLoss2d, CrossEntropyLos
 from utils.optim import RAdam, Ranger, AdamW
 from utils.scheduler.lr_scheduler import WarmupPolyLR
 
+from model.ENet_network import encoder
+from model.ENet_network import decoder
+
+from model import hr_networks
+ 
 class Trainer:
     def __init__(self, options):
         self.opts = options
@@ -47,15 +52,34 @@ class Trainer:
 
 #################################### Network #######################################
 
-        model = build_model(self.opts.model, num_classes=self.opts.classes)
-        ##### initialization
-        init_weight(model, nn.init.kaiming_normal_,
+        #model = build_model(self.opts.model, num_classes=self.opts.classes)
+        self.parameters_to_learn = []
+        self.model = {}
+        #self.model['encoder'] = encoder.ENet_Encoder()
+        self.model['encoder'] = hr_networks.ResnetEncoder(self.opts.num_layers , True)
+        
+        self.parameters_to_learn += list(self.model['encoder'].parameters())
+        #self.model['decoder'] = decoder.ENet_Decoder()
+        
+        self.model['decoder'] = hr_networks.DepthDecoder(self.model['encoder'].num_ch_enc)
+        self.parameters_to_learn += list(self.model['decoder'].parameters())
+        
+        init_weight(self.model['encoder'], nn.init.kaiming_normal_,
+                nn.BatchNorm2d, 1e-3, 0.1,
+                mode='fan_in')
+        init_weight(self.model['decoder'], nn.init.kaiming_normal_,
                 nn.BatchNorm2d, 1e-3, 0.1,
                 mode='fan_in')
         
+        
+        ##### initialization
+        #init_weight(model, nn.init.kaiming_normal_,
+        #        nn.BatchNorm2d, 1e-3, 0.1,
+        #        mode='fan_in')
+        
         print("=====> computing network parameters and FLOPs")
-        total_paramters = netParams(model)
-        print("the number of parameters: %d ==> %.2f M" % (total_paramters, (total_paramters / 1e6)))
+        #total_paramters = netParams(model)
+        #print("the number of parameters: %d ==> %.2f M" % (total_paramters, (total_paramters / 1e6)))
         
 #################################### Dataset and Loader ############################
 
@@ -90,16 +114,21 @@ class Trainer:
             "This repository now supports two datasets: cityscapes and camvid, %s is not included" % self.opts.dataset)
         
         self.criteria = self.criteria.cuda()
-        self.model = model.cuda()
         
+        #self.model = model.cuda()
+        
+        for key,model in self.model.items():
+            model.cuda()
 ###################################### Optiomizer ##################################
 
         if self.opts.optim == 'sgd':
             optimizer = torch.optim.SGD(
                 filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.opts.lr, momentum=0.9, weight_decay=1e-4)
         elif self.opts.optim == 'adam':
+            #optimizer = torch.optim.Adam(
+            #    filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.opts.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
             optimizer = torch.optim.Adam(
-                filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.opts.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
+                filter(lambda p: p.requires_grad, self.parameters_to_learn), lr=self.opts.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
         elif self.opts.optim == 'radam':
             optimizer = RAdam(
                 filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.opts.lr, betas=(0.90, 0.999), eps=1e-08, weight_decay=1e-4)
@@ -136,7 +165,9 @@ class Trainer:
         return: average loss, per class IoU, and mean IoU
         """
         print("Training")
-        self.model.train()
+        #self.model.train()
+        for key, model in self.model.items():
+            model.train()
         epoch_loss = []
     
         total_batches = len(self.trainLoader)
@@ -162,10 +193,10 @@ class Trainer:
             images = images.cuda()
             labels = labels.long().cuda()
     
-            output = self.model(images)
-            print(output.size())
-            print(labels.size())
-            input()
+            #output = self.model(images)
+            features = self.model['encoder'](images)
+            output = self.model['decoder'](features)
+###############################################################
             loss = self.criteria(output, labels)
             self.optimizer.zero_grad()
             loss.backward()
@@ -194,7 +225,9 @@ class Trainer:
         return: mean IoU and IoU class
         """
         # evaluation mode
-        self.model.eval()
+        #self.model.eval()
+        for key, model in self.model.items():
+            model.eval()
         total_batches = len(self.valLoader)
     
         data_list = []
@@ -203,7 +236,9 @@ class Trainer:
             with torch.no_grad():
                 # input_var = Variable(input).cuda()
                 input_var = input.cuda()
-                output = self.model(input_var)
+                #output = self.model(input_var)
+                feature = self.model['encoder'](input_var)
+                output = self.model['decoder'](feature)
             time_taken = time.time() - start_time
             print("[%d/%d]  time: %.2f" % (i + 1, total_batches, time_taken))
             output = output.cpu().data[0].numpy()
@@ -213,22 +248,28 @@ class Trainer:
             data_list.append([gt.flatten(), output.flatten()])
     
         meanIoU, per_class_iu = get_iou(data_list, self.opts.classes)
-        print('ss')
         return meanIoU, per_class_iu
 
     def save_model(self):
             
-        model_file_name = self.opts.savedir + '/model_' + str(self.epoch + 1) + '.pth'
-        state = {"epoch": self.epoch + 1, "model": self.model.state_dict()}
-
+        #model_file_name = self.opts.savedir + '/model_' + str(self.epoch + 1) + '.pth'
+        #state = {"epoch": self.epoch + 1, "model": self.model.state_dict()}
+        
         # Individual Setting for save model !!!
         if self.opts.dataset == 'camvid':
             torch.save(state, model_file_name)
         elif self.opts.dataset == 'cityscapes':
             if self.epoch >= self.opts.max_epochs - 10:
-                torch.save(state, model_file_name)
+                for model_name, model in self.model.items():
+                    save_path = os.path.join(self.opts.savedir + '{}_{}'.format(model_name,self.epoch) + '.pth')
+                    to_save = model.state_dict()
+                    torch.save(to_save, save_path)
             elif not self.epoch % 50:
-                torch.save(state, model_file_name)
+                for model_name, model in self.model.items():
+                    save_path = os.path.join(self.opts.savedir + '{}_{}'.format(model_name,self.epoch) + '.pth')
+                    to_save = model.state_dict()
+                    torch.save(to_save, save_path)
+                #torch.save(state, model_file_name)
 
         # draw plots for visualization
         if self.epoch % 50 == 0 or self.epoch == (self.opts.max_epochs - 1):
