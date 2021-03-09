@@ -1,1 +1,2 @@
-python test.py --cuda False --model ENet --dataset cityscapes --save --checkpoint checkpointscityscapes/ENetbs8gpu1_train/model_251.pth
+#python test.py --cuda True --model ENet --dataset cityscapes  --checkpoint checkpoint/cityscapes/ENetbs8gpu1_trainval/
+python test.py --cuda True --model ENet --dataset cityscapes  --checkpoint checkpoint/cityscapes/MONONetbs8gpu1_trainval/

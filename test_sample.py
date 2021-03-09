@@ -5,13 +5,14 @@ import torch.backends.cudnn as cudnn
 from torchvision import transforms
 from argparse import ArgumentParser
 # user
-import PIL.Image as pil
 import cv2
 from builders.model_builder import build_model
 from builders.dataset_builder import build_dataset_test
 from utils.utils import save_predict
 from utils.convert_state import convert_state_dict
-from model import hr_networks
+#from model import hr_networks
+from model.ENet_network import encoder
+from model.ENet_network import decoder
 
 
 def parse_args():
@@ -19,7 +20,7 @@ def parse_args():
     # model and dataset
     parser.add_argument('--model', default="ENet", help="model name: (default ENet)")
     parser.add_argument("--num_layers", type=int, help="number of resnet layers", default=18, choices=[18, 34, 50, 101, 152])
-    parser.add_argument("--epoch", type=int, help="number of resnet layers", default=0)
+    parser.add_argument("--epoch", type=int, help="number of resnet layers", default=200)
     parser.add_argument('--image_path', help="image_path")
     parser.add_argument('--num_workers', type=int, default=2, help="the number of parallel threads")
     parser.add_argument('--batch_size', type=int, default=1,
@@ -33,7 +34,6 @@ def parse_args():
 
     return args
 
-#def predict(args, model):
 def predict(args):
     """
     args:
@@ -42,21 +42,27 @@ def predict(args):
     return: class IoU and mean IoU
     """
 ###################Load pretrained models#########################################
-    device = 'cuda'
+    if args.cuda == True:
+        device = 'cuda'
+    else:
+        device = 'cpu'
+
     #model_path = os.path.join(args.model_folder, args.model_name)
     model_path = args.checkpoint
     print("-> Loading model from ", model_path)
     encoder_path = os.path.join(model_path, "encoder_{}.pth".format(args.epoch))
     decoder_path = os.path.join(model_path, "decoder_{}.pth".format(args.epoch))
     
-    encoder = hr_networks.ResnetEncoder(args.num_layers, True)
+    encoder = args.encoder.ENet_Encoder()
+    #encoder = hr_networks.ResnetEncoder(args.num_layers, True)
     loaded_dict_enc = torch.load(encoder_path, map_location=device)
     filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in encoder.state_dict()}
     encoder.load_state_dict(filtered_dict_enc)
     encoder.to(device)
     encoder.eval()
 
-    decoder = hr_networks.DepthDecoder(num_ch_enc=encoder.num_ch_enc)
+    #decoder = hr_networks.DepthDecoder(num_ch_enc=encoder.num_ch_enc)
+    decoder = args.decoder.ENet_Decoder()
     loaded_dict = torch.load(decoder_path, map_location=device)
     decoder.load_state_dict(loaded_dict)
     decoder.to(device)
@@ -71,15 +77,14 @@ def predict(args):
         #input_image = np.asarray(input_image)
         
         #without this getting better visualization
-        #mean = (128, 128, 128) 
-        #input_image -= mean
+        mean = (128, 128, 128) 
+        input_image -= mean
                 
         input_image = input_image[:, :, ::-1]  # change to RGB
         input_image = input_image.copy()
         original_width,original_height,_ = input_image.shape
         print(original_width,original_height)
-        #input_image = input_image.resize((256, 128), pil.LANCZOS)
-        input_image = transforms.ToTensor()(input_image).cuda() 
+        input_image = transforms.ToTensor()(input_image).to(device) 
         input_image = input_image.unsqueeze(0)
         output = decoder(encoder(input_image))
         #torch.cuda.synchronize()
@@ -142,13 +147,6 @@ if __name__ == '__main__':
     args = parse_args()
     args.save_seg_dir = os.path.join(args.save_seg_dir, args.image_path, 'predict', args.model)
     args.classes = 19
-
-    #if args.dataset == 'cityscapes':
-    #    args.classes = 19
-    #elif args.dataset == 'camvid':
-    #    args.classes = 11
-    #else:
-    #    raise NotImplementedError(
-    #        "This repository now supports two datasets: cityscapes and camvid, %s is not included" % args.dataset)
-
+    args.encoder = encoder
+    args.decoder = decoder
     test_model(args)

@@ -55,13 +55,12 @@ class Trainer:
         #model = build_model(self.opts.model, num_classes=self.opts.classes)
         self.parameters_to_learn = []
         self.model = {}
-        #self.model['encoder'] = encoder.ENet_Encoder()
-        self.model['encoder'] = hr_networks.ResnetEncoder(self.opts.num_layers , True)
+        self.model['encoder'] = encoder.ENet_Encoder()
+        #self.model['encoder'] = hr_networks.ResnetEncoder(self.opts.num_layers , True)
         
         self.parameters_to_learn += list(self.model['encoder'].parameters())
-        #self.model['decoder'] = decoder.ENet_Decoder()
-        
-        self.model['decoder'] = hr_networks.DepthDecoder(self.model['encoder'].num_ch_enc)
+        self.model['decoder'] = decoder.ENet_Decoder()
+        #self.model['decoder'] = hr_networks.DepthDecoder(self.model['encoder'].num_ch_enc)
         self.parameters_to_learn += list(self.model['decoder'].parameters())
         
         init_weight(self.model['encoder'], nn.init.kaiming_normal_,

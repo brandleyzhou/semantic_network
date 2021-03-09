@@ -11,19 +11,26 @@ from utils.utils import save_predict
 from utils.metric.metric import get_iou
 from utils.convert_state import convert_state_dict
 
+### network selections####
 
+#from model.ENet_network import encoder
+#from model.ENet_network import decoder
+
+from model import hr_networks
 def parse_args():
     parser = ArgumentParser(description='Efficient semantic segmentation')
     parser.add_argument('--model', default="ENet", help="model name: (default ENet)")
-    parser.add_argument('--dataset', default="camvid", help="dataset: cityscapes or camvid")
+    parser.add_argument('--dataset', default="cityscapes", help="dataset: cityscapes or camvid")
     parser.add_argument('--num_workers', type=int, default=1, help="the number of parallel threads")
     parser.add_argument('--batch_size', type=int, default=1,
                         help=" the batch_size is set to 1 when evaluating or testing")
-    parser.add_argument('--checkpoint', type=str,default="",
+    parser.add_argument('--checkpoint', type=str,
                         help="use the file to load the checkpoint for evaluating or testing ")
     parser.add_argument('--save_seg_dir', type=str, default="./result/",
                         help="saving path of prediction result")
     parser.add_argument('--best', action='store_true', help="Get the best result among last few checkpoints")
+    parser.add_argument("--epoch", type=int, help="number of resnet layers", default=200)
+    parser.add_argument("--num_layers", type=int, help="number of resnet layers", default=18, choices=[18, 34, 50, 101, 152])
     parser.add_argument('--save', action='store_true', help="Save the predicted image")
     parser.add_argument('--cuda', default=True, help="run on CPU or GPU")
     parser.add_argument("--gpus", default="0", type=str, help="gpu ids (default: 0)")
@@ -32,9 +39,7 @@ def parse_args():
     return args
 
 
-
-
-def test(args, test_loader, model):
+def test(args, test_loader):
     """
     args:
       test_loader: loaded for test dataset
@@ -42,15 +47,40 @@ def test(args, test_loader, model):
     return: class IoU and mean IoU
     """
     # evaluation or test mode
-    model.eval()
-    total_batches = len(test_loader)
+    if args.cuda == True:
+        device = 'cuda'
+    else:
+        device = 'cpu'
+    model_path = args.checkpoint
+    print("-> loading model from", model_path)
+    encoder_path = os.path.join(model_path, "encoder_{}.pth".format(args.epoch))
+    decoder_path = os.path.join(model_path, "decoder_{}.pth".format(args.epoch))
+    
+######encoder
+    #encoder = args.encoder.ENet_Encoder()
+    encoder = args.encoder
+    loaded_dict_enc = torch.load(encoder_path, map_location=device)
+    filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in encoder.state_dict()}
+    encoder.load_state_dict(filtered_dict_enc)
+    encoder.cuda()
+    encoder.eval()
 
+######decoder
+    decoder = args.decoder
+    #decoder = args.decoder.ENet_Decoder()
+    loaded_dict = torch.load(decoder_path, map_location=device)
+    decoder.load_state_dict(loaded_dict)
+    #decoder.to(device)
+    decoder.cuda()
+    decoder.eval()
+    
+    total_batches = len(test_loader)
     data_list = []
     for i, (input, label, size, name) in enumerate(test_loader):
         with torch.no_grad():
             input_var = input.cuda()
         start_time = time.time()
-        output = model(input_var)
+        output = decoder(encoder(input_var))
         torch.cuda.synchronize()
         time_taken = time.time() - start_time
         print('[%d/%d]  time: %.2f' % (i + 1, total_batches, time_taken))
@@ -84,66 +114,27 @@ def test_model(args):
             raise Exception("no GPU found or wrong gpu id, please run without --cuda")
 
     # build the model
-    model = build_model(args.model, num_classes=args.classes)
+    #model = build_model(args.model, num_classes=args.classes)
 
-    if args.cuda:
-        model = model.cuda()  # using GPU for inference
-        cudnn.benchmark = True
+    #if args.cuda:
+    #    model = model.cuda()  # using GPU for inference
+    #    cudnn.benchmark = True
 
-    if args.save:
-        if not os.path.exists(args.save_seg_dir):
-            os.makedirs(args.save_seg_dir)
+    #if args.save:
+    #    if not os.path.exists(args.save_seg_dir):
+    #        os.makedirs(args.save_seg_dir)
 
     # load the test set
     datas, testLoader = build_dataset_test(args.dataset, args.num_workers)
 
     if not args.best:
-        if args.checkpoint:
-            if os.path.isfile(args.checkpoint):
-                print("=====> loading checkpoint '{}'".format(args.checkpoint))
-                checkpoint = torch.load(args.checkpoint)
-                model.load_state_dict(checkpoint['model'])
-                # model.load_state_dict(convert_state_dict(checkpoint['model']))
-            else:
-                print("=====> no checkpoint found at '{}'".format(args.checkpoint))
-                raise FileNotFoundError("no checkpoint found at '{}'".format(args.checkpoint))
-
         print("=====> beginning validation")
         print("validation set length: ", len(testLoader))
-        mIOU_val, per_class_iu = test(args, testLoader, model)
+        mIOU_val, per_class_iu = test(args, testLoader)
         print(mIOU_val)
         print(per_class_iu)
 
     # Get the best test result among the last 10 model records.
-    else:
-        if args.checkpoint:
-            if os.path.isfile(args.checkpoint):
-                dirname, basename = os.path.split(args.checkpoint)
-                epoch = int(os.path.splitext(basename)[0].split('_')[1])
-                mIOU_val = []
-                per_class_iu = []
-                for i in range(epoch - 9, epoch + 1):
-                    basename = 'model_' + str(i) + '.pth'
-                    resume = os.path.join(dirname, basename)
-                    checkpoint = torch.load(resume)
-                    model.load_state_dict(checkpoint['model'])
-                    print("=====> beginning test the " + basename)
-                    print("validation set length: ", len(testLoader))
-                    mIOU_val_0, per_class_iu_0 = test(args, testLoader, model)
-                    mIOU_val.append(mIOU_val_0)
-                    per_class_iu.append(per_class_iu_0)
-
-                index = list(range(epoch - 9, epoch + 1))[np.argmax(mIOU_val)]
-                print("The best mIoU among the last 10 models is", index)
-                print(mIOU_val)
-                per_class_iu = per_class_iu[np.argmax(mIOU_val)]
-                mIOU_val = np.max(mIOU_val)
-                print(mIOU_val)
-                print(per_class_iu)
-
-            else:
-                print("=====> no checkpoint found at '{}'".format(args.checkpoint))
-                raise FileNotFoundError("no checkpoint found at '{}'".format(args.checkpoint))
 
     # Save the result
     if not args.best:
@@ -172,13 +163,9 @@ if __name__ == '__main__':
     args = parse_args()
 
     args.save_seg_dir = os.path.join(args.save_seg_dir, args.dataset, args.model)
-
-    if args.dataset == 'cityscapes':
-        args.classes = 19
-    elif args.dataset == 'camvid':
-        args.classes = 11
-    else:
-        raise NotImplementedError(
-            "This repository now supports two datasets: cityscapes and camvid, %s is not included" % args.dataset)
-
+    args.classes = 19
+    #args.encoder = encoder
+    args.encoder = hr_networks.ResnetEncoder(args.num_layers, True)
+    #args.decoder = decoder
+    args.decoder = hr_networks.DepthDecoder(num_ch_enc=args.encoder.num_ch_enc)
     test_model(args)
