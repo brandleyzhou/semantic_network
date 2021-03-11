@@ -105,5 +105,6 @@ class ResnetEncoder(nn.Module):
         features[-1] = self.se_block3(features[-1])
         features.append(self.encoder.layer4(features[-1]))
         features[-1] = self.se_block4(features[-1])
-
-        return features
+        #print(features[2].size())
+        #return features
+        return features[2]

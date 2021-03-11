@@ -262,3 +262,21 @@ class UpsamplingBottleneck(nn.Module):
         out = main + ext
 
         return self.out_prelu(out)
+
+class Feature_Fuse(nn.Module):
+    def __init__(self,in_channel_1, in_channel_2,out_channel):
+        super(Feature_Fuse, self).__init__()
+        self.in_channel = in_channel_1 + in_channel_2
+        self.out_channel = out_channel
+
+        self.conv = nn.Conv2d(self.in_channel,self.out_channel,kernel_size = 1, stride = 1)
+        self.relu = nn.ReLU(inplace =True)
+
+    def forward(self, features):
+        x = torch.cat(features,1)
+        x = self.relu(self.conv(x))
+        return x
+
+    
+
+

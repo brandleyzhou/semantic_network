@@ -40,6 +40,10 @@ class DepthDecoder(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.output_conv = nn.Conv2d(16, classes, kernel_size = 1, stride = 1, bias =False)
     def forward(self, input_features):
+        for i in input_features:
+            print(i.size())
+
+        input()
         middle_features = []
         # decoder
         x = input_features[-1]

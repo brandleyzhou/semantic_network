@@ -11,7 +11,8 @@ class SegOptions:
         self.parser = argparse.ArgumentParser(description = 'Semantic Segmentation Options')
 
         # model and dataset
-        self.parser.add_argument('--model', type=str, default="ENet", help="model name: (default ENet)")
+        self.parser.add_argument('--model', type=str, default="ENet", choices = ['MONO','FPENet', 'SQNet', 'ENet'], help="model name: (default ENet)")
+        self.parser.add_argument('--feature_fusing', type=bool, default = False, help="decide whether to fuse features")
         self.parser.add_argument('--dataset', type=str, default="camvid", help="dataset: cityscapes or camvid")
         self.parser.add_argument('--input_size', type=str, default="192,640", help="input size of model")
         self.parser.add_argument('--num_workers', type=int, default=4, help=" the number of parallel threads")

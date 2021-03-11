@@ -27,10 +27,10 @@ from utils.losses.loss import LovaszSoftmax, CrossEntropyLoss2d, CrossEntropyLos
 from utils.optim import RAdam, Ranger, AdamW
 from utils.scheduler.lr_scheduler import WarmupPolyLR
 
-from model.ENet_network import encoder
-from model.ENet_network import decoder
+#from model.ENet_network import encoder
+#from model.ENet_network import decoder
 
-from model import hr_networks
+#from model import hr_networks
  
 class Trainer:
     def __init__(self, options):
@@ -55,12 +55,38 @@ class Trainer:
         #model = build_model(self.opts.model, num_classes=self.opts.classes)
         self.parameters_to_learn = []
         self.model = {}
-        self.model['encoder'] = encoder.ENet_Encoder()
-        #self.model['encoder'] = hr_networks.ResnetEncoder(self.opts.num_layers , True)
         
+        if self.opts.model == 'ENet':
+
+            from model.ENet_network import encoder, decoder
+            from model import hr_networks
+            self.model['encoder'] = encoder.ENet_Encoder()
+            self.model['decoder'] = decoder.ENet_Decoder()
+            self.model['mono_encoder'] = hr_networks.ResnetEncoder(self.opts.num_layers , True)
+            #encoder_path = os.path.join(model_path, "encoder_{}.pth".format(args.epoch))
+            encoder_path = 'model/mono_encoder.pth'
+            loaded_dict_enc = torch.load(encoder_path, map_location=self.device)
+            filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in self.model['mono_encoder'].state_dict()}
+            self.model['mono_encoder'].load_state_dict(filtered_dict_enc)
+            self.model['mono_encoder'].to(self.device)
+            self.model['mono_encoder'].eval()
+        
+        elif self.opts.model == 'MONO':
+
+            from model import hr_networks
+            self.model['encoder'] = hr_networks.ResnetEncoder(self.opts.num_layers , True)
+            self.model['decoder'] = hr_networks.DepthDecoder(self.model['encoder'].num_ch_enc)
+        
+        elif self.opts.model == 'FPENet':
+            
+            from model.FPENet_network import encoder,decoder
+            self.model['encoder'] = encoder.FPENet_Encoder()
+            
+            self.model['decoder'] = decoder.FPENet_Decoder()
+        else:
+            print('No model')
+###################################################
         self.parameters_to_learn += list(self.model['encoder'].parameters())
-        self.model['decoder'] = decoder.ENet_Decoder()
-        #self.model['decoder'] = hr_networks.DepthDecoder(self.model['encoder'].num_ch_enc)
         self.parameters_to_learn += list(self.model['decoder'].parameters())
         
         init_weight(self.model['encoder'], nn.init.kaiming_normal_,
@@ -194,7 +220,11 @@ class Trainer:
     
             #output = self.model(images)
             features = self.model['encoder'](images)
-            output = self.model['decoder'](features)
+            if self.opts.feature_fusing == True:
+                x_o = self.model['mono_encoder'](images)
+                output = self.model['decoder'](features,x_o)
+            else:
+                output = self.model['decoder'](features)
 ###############################################################
             loss = self.criteria(output, labels)
             self.optimizer.zero_grad()
