@@ -68,11 +68,11 @@ class ResnetEncoder(nn.Module):
                    101: models.resnet101,
                    152: models.resnet152}
 
-        self.se_block0 = SE_block(self.num_ch_enc[0])
-        self.se_block1 = SE_block(self.num_ch_enc[1])
-        self.se_block2 = SE_block(self.num_ch_enc[2])
-        self.se_block3 = SE_block(self.num_ch_enc[3])
-        self.se_block4 = SE_block(self.num_ch_enc[4])
+        #self.se_block0 = SE_block(self.num_ch_enc[0])
+        #self.se_block1 = SE_block(self.num_ch_enc[1])
+        #self.se_block2 = SE_block(self.num_ch_enc[2])
+        #self.se_block3 = SE_block(self.num_ch_enc[3])
+        #self.se_block4 = SE_block(self.num_ch_enc[4])
         if num_layers not in resnets:
             raise ValueError("{} is not a valid number of resnet layers".format(num_layers))
 
@@ -96,15 +96,13 @@ class ResnetEncoder(nn.Module):
         #features.append(self.encoder.layer4(features[-1]))
 ####### adding se block in encoder ##
         features.append(self.encoder.relu(x))
-        features[-1] = self.se_block0(features[-1])
+        #features[-1] = self.se_block0(features[-1])
         features.append(self.encoder.layer1(self.encoder.maxpool(features[-1])))
-        features[-1] = self.se_block1(features[-1])
+        #features[-1] = self.se_block1(features[-1])
         features.append(self.encoder.layer2(features[-1]))
-        features[-1] = self.se_block2(features[-1])
+        #features[-1] = self.se_block2(features[-1])
         features.append(self.encoder.layer3(features[-1]))
-        features[-1] = self.se_block3(features[-1])
+        #features[-1] = self.se_block3(features[-1])
         features.append(self.encoder.layer4(features[-1]))
-        features[-1] = self.se_block4(features[-1])
-        #print(features[2].size())
-        #return features
+        #features[-1] = self.se_block4(features[-1])
         return features[2]

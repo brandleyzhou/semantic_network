@@ -26,11 +26,6 @@ from utils.losses.loss import LovaszSoftmax, CrossEntropyLoss2d, CrossEntropyLos
     ProbOhemCrossEntropy2d, FocalLoss2d
 from utils.optim import RAdam, Ranger, AdamW
 from utils.scheduler.lr_scheduler import WarmupPolyLR
-
-#from model.ENet_network import encoder
-#from model.ENet_network import decoder
-
-#from model import hr_networks
  
 class Trainer:
     def __init__(self, options):
@@ -81,7 +76,6 @@ class Trainer:
             
             from model.FPENet_network import encoder,decoder
             self.model['encoder'] = encoder.FPENet_Encoder()
-            
             self.model['decoder'] = decoder.FPENet_Decoder()
         else:
             print('No model')
@@ -267,7 +261,8 @@ class Trainer:
                 input_var = input.cuda()
                 #output = self.model(input_var)
                 feature = self.model['encoder'](input_var)
-                output = self.model['decoder'](feature)
+                x_o = self.model['mono_encoder'](input_var)
+                output = self.model['decoder'](feature,x_o)
             time_taken = time.time() - start_time
             print("[%d/%d]  time: %.2f" % (i + 1, total_batches, time_taken))
             output = output.cpu().data[0].numpy()

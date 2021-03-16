@@ -19,7 +19,8 @@ from utils.convert_state import convert_state_dict
 from model import hr_networks
 def parse_args():
     parser = ArgumentParser(description='Efficient semantic segmentation')
-    parser.add_argument('--model', default="ENet", help="model name: (default ENet)")
+    parser.add_argument('--model', type=str, default="ENet", choices = ['MONO','FPENet', 'SQNet', 'ENet'], help="model name: (default ENet)")
+    parser.add_argument('--feature_fusing', type=bool, default = False, help="decide whether to fuse features")
     parser.add_argument('--dataset', default="cityscapes", help="dataset: cityscapes or camvid")
     parser.add_argument('--num_workers', type=int, default=1, help="the number of parallel threads")
     parser.add_argument('--batch_size', type=int, default=1,
@@ -29,7 +30,7 @@ def parse_args():
     parser.add_argument('--save_seg_dir', type=str, default="./result/",
                         help="saving path of prediction result")
     parser.add_argument('--best', action='store_true', help="Get the best result among last few checkpoints")
-    parser.add_argument("--epoch", type=int, help="number of resnet layers", default=200)
+    parser.add_argument("--epoch", type=int, help="number of resnet layers", default=0)
     parser.add_argument("--num_layers", type=int, help="number of resnet layers", default=18, choices=[18, 34, 50, 101, 152])
     parser.add_argument('--save', action='store_true', help="Save the predicted image")
     parser.add_argument('--cuda', default=True, help="run on CPU or GPU")
@@ -46,41 +47,57 @@ def test(args, test_loader):
       model: model
     return: class IoU and mean IoU
     """
+    device = 'cuda' if args.cuda == True else 'cpu'
     # evaluation or test mode
-    if args.cuda == True:
-        device = 'cuda'
-    else:
-        device = 'cpu'
     model_path = args.checkpoint
     print("-> loading model from", model_path)
     encoder_path = os.path.join(model_path, "encoder_{}.pth".format(args.epoch))
     decoder_path = os.path.join(model_path, "decoder_{}.pth".format(args.epoch))
-    
+
+######depth_encoder
+    if args.feature_fusing == True:
+        depth_encoder = args.depth_encoder
+        depth_encoder_path = 'model/mono_encoder.pth'
+        loaded_dict_enc = torch.load(encoder_path, map_location=device)
+        filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in depth_encoder.state_dict()}
+        depth_encoder.load_state_dict(filtered_dict_enc)
+        depth_encoder.to(device)
+        depth_encoder.eval()
+
 ######encoder
-    #encoder = args.encoder.ENet_Encoder()
     encoder = args.encoder
     loaded_dict_enc = torch.load(encoder_path, map_location=device)
-    filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in encoder.state_dict()}
-    encoder.load_state_dict(filtered_dict_enc)
-    encoder.cuda()
+    #filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in encoder.state_dict()}
+    #encoder.load_state_dict(filtered_dict_enc)
+    encoder.load_state_dict(loaded_dict_enc)
+    if args.cuda == True:
+        encoder.cuda()
+    else:
+        encoder.cpu()
     encoder.eval()
 
 ######decoder
     decoder = args.decoder
-    #decoder = args.decoder.ENet_Decoder()
     loaded_dict = torch.load(decoder_path, map_location=device)
     decoder.load_state_dict(loaded_dict)
-    #decoder.to(device)
-    decoder.cuda()
+    if args.cuda:
+        decoder.cuda()
+    else:
+        decoder.cpu()
     decoder.eval()
     
     total_batches = len(test_loader)
     data_list = []
     for i, (input, label, size, name) in enumerate(test_loader):
         with torch.no_grad():
-            input_var = input.cuda()
+            input_var = input.cuda() if args.cuda == True else input.cpu()
         start_time = time.time()
-        output = decoder(encoder(input_var))
+        if args.feature_fusing == True:
+            features = encoder(input_var)
+            x_o = depth_encoder(input_var)
+            output = decoder(features, x_o)
+        else:
+            output = decoder(encoder(input_var))
         torch.cuda.synchronize()
         time_taken = time.time() - start_time
         print('[%d/%d]  time: %.2f' % (i + 1, total_batches, time_taken))
@@ -164,8 +181,18 @@ if __name__ == '__main__':
 
     args.save_seg_dir = os.path.join(args.save_seg_dir, args.dataset, args.model)
     args.classes = 19
-    #args.encoder = encoder
-    args.encoder = hr_networks.ResnetEncoder(args.num_layers, True)
-    #args.decoder = decoder
-    args.decoder = hr_networks.DepthDecoder(num_ch_enc=args.encoder.num_ch_enc)
+    if args.model == 'ENet':
+        from model.ENet_network import encoder, decoder
+        args.encoder = encoder.ENet_Encoder()
+        args.decoder = decoder.ENet_Decoder()
+    elif args.model == 'FPENet':
+        from model.FPENet_network import encoder,decoder
+        self.model['encoder'] = encoder.FPENet_Encoder()
+        self.model['decoder'] = decoder.FPENet_Decoder()
+    else:
+        print('No modelk')
+    if args.feature_fusing == True:
+        args.depth_encoder = hr_networks.ResnetEncoder(args.num_layers, True)
+        #args.depth_decoder = hr_networks.DepthDecoder(num_ch_enc=args.encoder.num_ch_enc)
+    
     test_model(args)

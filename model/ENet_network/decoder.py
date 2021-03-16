@@ -9,7 +9,7 @@ class ENet_Decoder(nn.Module):
     def __init__(self, classes = 19, decoder_relu = True):
         super(ENet_Decoder,self).__init__()
         #########
-        self.fuse_block = Feature_Fuse(128, 128, 128)
+        #self.fuse_block = Feature_Fuse(128, 128, 128)
 
         self.upsample4_0 = UpsamplingBottleneck(
             128, 64, padding=1, dropout_prob=0.1, relu=decoder_relu)
@@ -35,8 +35,8 @@ class ENet_Decoder(nn.Module):
         self.project_layer = nn.Conv2d(128, classes, 1, bias=False)
 
     def forward(self, x, x_o):
-        features_tofuse = [x[0], x_o]
-        x[0] = self.fuse_block(features_tofuse) 
+        #features_tofuse = [x[0], x_o]
+        #x[0] = self.fuse_block(features_tofuse) 
         x, max_indices1_0, max_indices2_0 = x[0], x[1], x[2]
 
         # Stage 4 - Decoder
