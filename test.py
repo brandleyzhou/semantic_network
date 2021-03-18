@@ -47,8 +47,9 @@ def test(args, test_loader):
       model: model
     return: class IoU and mean IoU
     """
-    device = 'cuda' if args.cuda == True else 'cpu'
+    device = 'cuda' 
     # evaluation or test mode
+    print(device)
     model_path = args.checkpoint
     print("-> loading model from", model_path)
     encoder_path = os.path.join(model_path, "encoder_{}.pth".format(args.epoch))
@@ -58,43 +59,41 @@ def test(args, test_loader):
     if args.feature_fusing == True:
         depth_encoder = args.depth_encoder
         depth_encoder_path = 'model/mono_encoder.pth'
-        loaded_dict_enc = torch.load(encoder_path, map_location=device)
+        loaded_dict_enc = torch.load(depth_encoder_path, map_location=device)
         filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in depth_encoder.state_dict()}
         depth_encoder.load_state_dict(filtered_dict_enc)
+        #depth_encoder.load_state_dict(loaded_dict_enc)
         depth_encoder.to(device)
         depth_encoder.eval()
 
 ######encoder
     encoder = args.encoder
     loaded_dict_enc = torch.load(encoder_path, map_location=device)
-    #filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in encoder.state_dict()}
-    #encoder.load_state_dict(filtered_dict_enc)
-    encoder.load_state_dict(loaded_dict_enc)
-    if args.cuda == True:
-        encoder.cuda()
-    else:
-        encoder.cpu()
+    filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in encoder.state_dict()}
+    encoder.load_state_dict(filtered_dict_enc)
+    #encoder.load_state_dict(loaded_dict_enc)
+    encoder.cuda()
     encoder.eval()
 
 ######decoder
     decoder = args.decoder
     loaded_dict = torch.load(decoder_path, map_location=device)
     decoder.load_state_dict(loaded_dict)
-    if args.cuda:
-        decoder.cuda()
-    else:
-        decoder.cpu()
+    decoder.cuda()
     decoder.eval()
     
     total_batches = len(test_loader)
     data_list = []
     for i, (input, label, size, name) in enumerate(test_loader):
         with torch.no_grad():
-            input_var = input.cuda() if args.cuda == True else input.cpu()
+            input_var = input.cuda()
         start_time = time.time()
         if args.feature_fusing == True:
+            print(args.feature_fusing)
             features = encoder(input_var)
             x_o = depth_encoder(input_var)
+            print(features[0].get_device())
+            print('s',x_o.get_device())
             output = decoder(features, x_o)
         else:
             output = decoder(encoder(input_var))

@@ -3,6 +3,27 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 
+class Encoder_Se_block(nn.Module):
+    def __init__(self, in_scalar = 2, out_scalar = 2, increase = 16):
+        super(Encoder_Se_block,self).__init__()
+        self.fc = nn.Sequential(
+                    nn.Linear(in_scalar, increase, bias = False),
+                    nn.ReLU(inplace = True),
+                    nn.Linear(increase, out_scalar, bias = True)
+                    )
+        self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU(inplace = True)
+    
+    def forward(self, feature, x_o):
+        feature_max = torch.max(feature)
+        x_max = torch.max(x_o)
+        f_w = feature_max / (feature_max + x_max) 
+        x_w = x_max / (feature_max + x_max)
+        x = torch.tensor([f_w,x_w]).cuda()
+        x = self.sigmoid(self.fc(x))
+        
+        return x
+
 class InitialBlock(nn.Module):
     def __init__(self, in_channels,out_channels, kernel_size, padding=0, bias=False,relu=True):
         super(InitialBlock, self).__init__()

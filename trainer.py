@@ -4,8 +4,8 @@ import os,sys
 #from torchvision.utils import save_image
 #from toch.nn.parallel import DistributedDataParallel as DDP
 import json
-import networks
 import time
+from datetime import datetime
 import torch
 from torch import optim
 import torch.nn as nn
@@ -29,6 +29,8 @@ from utils.scheduler.lr_scheduler import WarmupPolyLR
  
 class Trainer:
     def __init__(self, options):
+        now = datetime.now()
+        current_time_date = now.strftime("%d%m%Y-%H:%M:%S")
         self.opts = options
         self.lossTr_list = []
         self.mIOU_val_list = []
@@ -40,8 +42,8 @@ class Trainer:
 
 ################################ Saving_Path #######################################
 
-        self.opts.savedir = (self.opts.savedir + self.opts.dataset + '/' + self.opts.model + 'bs' + str(self.opts.batch_size) + 'gpu' + str(self.opts.gpu_nums) + "_" + str(self.opts.train_type) + '/')
-        
+        self.opts.savedir =  (self.opts.savedir + self.opts.dataset + '/' + self.opts.model + str(self.opts.batch_size) + str(self.opts.gpu_nums) + "_" + str(self.opts.train_type) + '/' )
+        self.opts.savedir = os.path.join(self.opts.savedir + current_time_date)
         if not os.path.exists(self.opts.savedir):
             os.makedirs(self.opts.savedir)
 
@@ -58,7 +60,6 @@ class Trainer:
             self.model['encoder'] = encoder.ENet_Encoder()
             self.model['decoder'] = decoder.ENet_Decoder()
             self.model['mono_encoder'] = hr_networks.ResnetEncoder(self.opts.num_layers , True)
-            #encoder_path = os.path.join(model_path, "encoder_{}.pth".format(args.epoch))
             encoder_path = 'model/mono_encoder.pth'
             loaded_dict_enc = torch.load(encoder_path, map_location=self.device)
             filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in self.model['mono_encoder'].state_dict()}

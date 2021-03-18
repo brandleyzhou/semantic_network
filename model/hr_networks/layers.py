@@ -298,6 +298,72 @@ def compute_depth_errors(gt, pred):
 
     return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
 
+class SE_block(nn.Module):
+    def __init__(self, in_channel, visual_weights = False, reduction = 16 ):
+        super(SE_block, self).__init__()
+        reduction = reduction
+        in_channel = in_channel
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(in_channel, in_channel // reduction, bias = False),
+            nn.ReLU(inplace = True),
+            nn.Linear(in_channel // reduction, in_channel, bias = False)
+            )
+        self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU(inplace = True)
+        self.vis = visual_weights
+        if self.vis == True:
+            self.weight_list = []
+            #self.weight_diff_1 = []
+            #self.weight_diff_2 = []
+            self.weight_rel_diff_1 = []
+            self.weight_rel_diff_2 = []
+            self.name = 0
+            self.n = 0
+            self.d = 0 # do not know why has two series, so just focus on one track
+            self.diff_origin_vs_reweights_list = []
+    
+    def forward(self, in_feature):
+
+        b,c,_,_ = in_feature.size()
+        output_weights_avg = self.avg_pool(in_feature).view(b,c)
+        output_weights = self.sigmoid(self.fc(output_weights_avg).view(b,c,1,1))
+        if self.vis == True:
+            self.n += 1
+            self.d += 1
+            if self.n % 500 == 0:
+                self.diff_origin_vs_reweights_list.append(torch.mean(output_weights.expand_as(in_feature)* in_feature - in_feature).detach().cpu().numpy())
+                self.weight_list.append(output_weights[0,0,0,0])
+                #self.weight_diff_1.append(output_weights_avg[0,0]-output_weights[0,0,0,0])
+                #self.weight_diff_2.append(output_weights_avg[0,1]-output_weights[0,1,0,0])
+                self.weight_rel_diff_1.append((output_weights_avg[0,0]-output_weights[0,0,0,0])/ output_weights_avg[0,0])
+                self.weight_rel_diff_2.append((output_weights_avg[0,1]-output_weights[0,1,0,0])/ output_weights_avg[0,1])
+                
+                if self.d % 3 != 0:
+                    
+                    # plot reweights 
+                    fig1, ax1 = plt.subplots(figsize=(11,8))
+                    ax1.plot(range(len(self.weight_list)),self.weight_rel_diff_1,label = 'rel_weight1')
+                    ax1.plot(range(len(self.weight_list)),self.weight_rel_diff_2,label = 'rel_weight2')
+                    ax1.set_title("difference vs epochs")
+                    ax1.set_xlabel("epochs")
+                    ax1.set_ylabel("rel_difference")
+                    ax1.legend()
+                    plt.savefig("rel_difference_vs_epoch.png")
+                    
+                    # plot before fc layer.
+                    fig2, ax2 = plt.subplots(figsize=(11,8))
+                    #ax2.plot(range(len(self.weight_list)),self.weight_diff_1,label = 'weight1')
+                    #ax2.plot(range(len(self.weight_list)),self.weight_diff_2,label = 'weight2')
+                    ax2.plot(range(len(self.weight_list)),self.diff_origin_vs_reweights_list,label='difference_{}'.format(self.name))
+
+                    ax2.set_title("difference between rewights and weights vs epochs")
+                    ax2.set_xlabel("epochs")
+                    ax2.set_ylabel("abso_difference")
+                    #ax2.legend()
+                    plt.savefig("{}_feature_mean_difference_vs_epoch.png".format(self.name))
+                    plt.close("all")
+        return output_weights.expand_as(in_feature) * in_feature
 
 class fSEModule(nn.Module):
     def __init__(self, high_feature_channel, low_feature_channels, output_channel=None):

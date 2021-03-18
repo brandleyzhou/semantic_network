@@ -313,12 +313,30 @@ class SE_block(nn.Module):
         self.relu = nn.ReLU(inplace = True)
 
     def forward(self, in_feature):
-
         b,c,_,_ = in_feature.size()
         output_weights = self.avg_pool(in_feature).view(b,c)
         output_weights = self.sigmoid(self.fc(output_weights).view(b,c,1,1))
         return output_weights.expand_as(in_feature) * in_feature
-        
+
+class Encoder_Se_block(nn.Module):
+    def __init__(self, in_scalar = 2, out_scalar = 2, increase = 16):
+        super(Encoder_Se_block,self).__init__()
+        self.fc = nn.Sequential(
+                nn.Linear(in_scalar, increase, bias = False),
+                nn.ReLU(inplace = True),
+                nn.Linear(increase, out_scalar, bias = True)
+                )
+        self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU(inplace = True)
+    def forward(self, feature, x_o):
+        feature_max = torch.max(feature)
+        x_max = torch.max(x_o)
+        f_w = feature_max / (feature_max + x_max) 
+        x_w = x_max / (feature_max + x_max)
+        x = [f_w, x_w] 
+        x = seld.sigmoid(self.fc(x))
+        return x
+
 class fSEModule(nn.Module):
     def __init__(self, high_feature_channel, low_feature_channels, output_channel=None):
         super(fSEModule, self).__init__()
